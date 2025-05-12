@@ -1,0 +1,1615 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>無邊界貪食蛇遊戲</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif;
+            background-color: #212121;
+            color: white;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 80vh;
+            margin: 0 auto;
+            overflow: hidden;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            background-color: #000;
+        }
+        
+        #ui-container {
+            width: 100%;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            background-color: #333;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        
+        .ui-section {
+            display: flex;
+            align-items: center;
+        }
+        
+        .ui-label {
+            margin-right: 10px;
+            font-weight: bold;
+        }
+        
+        #score, #health, #objective-progress, #level {
+            padding: 5px 10px;
+            border-radius: 3px;
+            background-color: #444;
+        }
+        
+        #score {
+            color: #FFD700;
+        }
+        
+        #health {
+            color: #FF6347;
+        }
+        
+        #objective-progress {
+            color: #7CFC00;
+        }
+        
+        #level {
+            color: #1E90FF;
+        }
+        
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 24px;
+            z-index: 10;
+            display: none;
+        }
+        
+        #message button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 20px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: background-color 0.3s ease;
+        }
+        
+        #message button:hover {
+            background-color: #45a049;
+        }
+        
+        #controls {
+            margin-top: 15px;
+            text-align: center;
+            color: #AAA;
+            font-size: 14px;
+        }
+        
+        #objective-description {
+            text-align: center;
+            margin-bottom: 10px;
+            color: #7CFC00;
+            font-weight: bold;
+        }
+        
+        .power-up-icon {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        
+        #power-ups {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 5px;
+        }
+        
+        .snake-info {
+            position: absolute;
+            color: white;
+            font-size: 10px;
+            pointer-events: none;
+            text-shadow: 1px 1px 1px #000;
+        }
+
+        /* 新增的排行榜樣式 */
+        #leaderboard-container {
+            width: 300px;
+            background-color: #333;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 20px;
+            overflow-y: auto; /* 如果排行榜太長，可以捲動 */
+            max-height: 200px;
+        }
+
+        #leaderboard {
+            list-style-type: decimal;
+            padding-left: 20px;
+            color: white;
+        }
+
+        #leaderboard li {
+            padding: 5px 0;
+            border-bottom: 1px solid #555;
+        }
+
+        #leaderboard li:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-container">
+        <div class="ui-section">
+            <span class="ui-label">分數:</span>
+            <span id="score">0</span>
+        </div>
+        <div class="ui-section">
+            <span class="ui-label">生命:</span>
+            <span id="health">3</span>
+        </div>
+        <div class="ui-section">
+            <span class="ui-label">關卡:</span>
+            <span id="level">1</span>
+        </div>
+        <div class="ui-section">
+            <span class="ui-label">目標:</span>
+            <span id="objective-progress">0/0</span>
+        </div>
+    </div>
+    
+    <div id="objective-description">任務: 收集足夠的食物</div>
+    
+    <div id="power-ups"></div>
+    
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="message">
+            <div id="message-text">準備好開始了嗎？</div>
+            <button id="start-game">開始遊戲</button>
+        </div>
+    </div>
+    
+    <div id="controls">
+        使用 ↑,↓,←,→ 或 W,A,S,D 控制蛇的移動方向
+    </div>
+    
+    <div id="leaderboard-container">
+        <h2>排行榜</h2>
+        <ol id="leaderboard">
+        </ol>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script>
+        // 你的 Firebase 設定
+        const firebaseConfig = {
+            apiKey: "AIzaSyCSTdFBXRw7W5vgaeCswlGYrF4wAbdyFNE",
+            authDomain: "snake-bfd96.firebaseapp.com",
+            databaseURL: "https://snake-bfd96-default-rtdb.firebaseio.com",
+            projectId: "snake-bfd96",
+            storageBucket: "snake-bfd96.firebasestorage.app",
+            messagingSenderId: "757417442692",
+            appId: "1:757417442692:web:aa3f58d7ba7476291731d1"
+        };
+
+        // 初始化 Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
+    </script>
+    <script>
+        // 遊戲設定
+        const GRID_SIZE = 20; // 每個格子的大小
+        const INITIAL_SNAKE_LENGTH = 5; // 初始蛇的长度
+        const INITIAL_SPEED = 150; // 初始移動速度 (毫秒)
+        const AI_SNAKES_COUNT = 3; // 電腦控制的蛇的數量
+        const FOOD_TYPES = {
+            normal: { color: '#FF0000', value: 1, probability: 0.7 },
+            golden: { color: '#FFD700', value: 5, probability: 0.15 },
+            speed: { color: '#00FFFF', value: 2, probability: 0.1 },
+            special: { color: '#FF00FF', value: 3, probability: 0.05 }
+        };
+        
+        const POWER_UPS = {
+            shield: { color: '#4169E1', duration: 10000, description: '護盾 - 暫時免疫碰撞' },
+            speedBoost: { color: '#32CD32', duration: 5000, description: '加速 - 移動速度提升' },
+            magnet: { color: '#DAA520', duration: 8000, description: '磁鐵 - 吸引附近的食物' },
+            ghost: { color: '#87CEEB', duration: 12000, description: '幽靈 - 可穿過其他蛇' }
+        };
+        
+        const OBSTACLES = {
+            bomb: { color: '#FF4500', damage: 1, probability: 0.3 },
+            spike: { color: '#8B4513', damage: 2, probability: 0.2 }
+        };
+        
+        const OBJECTIVES = [
+            { type: 'score', description: '獲得 {0} 分', params: [100, 200, 300, 500, 1000] },
+            { type: 'food', description: '吃掉 {0} 個食物', params: [15, 25, 40, 60, 100] },
+            { type: 'golden', description: '吃掉 {0} 個金色食物', params: [3, 5, 8, 12, 20] },
+            { type: 'ai', description: '擊敗 {0} 條敵方蛇', params: [1, 2, 3, 5, 8] },
+            { type: 'length', description: '達到 {0} 的長度', params: [20, 30, 50, 75, 100] },
+            { type: 'powerup', description: '收集 {0} 個強化道具', params: [2, 4, 6, 8, 10] }
+        ];
+        
+        // 遊戲變數
+        let canvas, ctx;
+        let gameWidth, gameHeight;
+        let playerSnake;
+        let aiSnakes = [];
+        let foods = [];
+        let powerUps = [];
+        let obstacles = [];
+        let score = 0;
+        let health = 3;
+        let level = 1;
+        let gameRunning = false;
+        let gameSpeed = INITIAL_SPEED;
+        let lastUpdateTime = 0;
+        let cameraOffset = { x: 0, y: 0 };
+        let currentObjective = null;
+        let objectiveProgress = 0;
+        let objectiveTarget = 0;
+        let activePowerUps = {};
+        let killCount = 0;
+        let foodEaten = 0;
+        let goldenFoodEaten = 0;
+        let powerUpsCollected = 0;
+        
+        // DOM 元素
+        let scoreElement;
+        let healthElement;
+        let objectiveProgressElement;
+        let objectiveDescriptionElement;
+        let levelElement;
+        let messageElement;
+        let messageTextElement;
+        let startGameButton;
+        let powerUpsDisplay;
+        
+        // 初始化遊戲
+        async function fetchLeaderboard() {
+            const leaderboardList = document.getElementById('leaderboard');
+            leaderboardList.innerHTML = ''; // 清空現有排行榜
+
+            try {
+                const snapshot = await db.collection('leaderboard').orderBy('score', 'desc').limit(10).get(); // 取得前 10 名，依分數降序排列
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const li = document.createElement('li');
+                    li.textContent = `${data.name}: ${data.score}`;
+                    leaderboardList.appendChild(li);
+                });
+            } catch (error) {
+                console.error('讀取排行榜失敗:', error);
+                leaderboardList.innerHTML = '<li>讀取排行榜失敗！</li>';
+            }
+        }
+
+        // 在遊戲開始或頁面載入時呼叫，以顯示初始排行榜
+        window.onload = function() {
+            canvas = document.getElementById('game-canvas');
+            ctx = canvas.getContext('2d');
+
+            scoreElement = document.getElementById('score');
+            healthElement = document.getElementById('health');
+            objectiveProgressElement = document.getElementById('objective-progress');
+            objectiveDescriptionElement = document.getElementById('objective-description');
+            levelElement = document.getElementById('level');
+            messageElement = document.getElementById('message');
+            messageTextElement = document.getElementById('message-text');
+            startGameButton = document.getElementById('start-game');
+            powerUpsDisplay = document.getElementById('power-ups');
+
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            // 監聽用戶輸入
+            window.addEventListener('keydown', handleKeyDown);
+
+            // 設置按鈕事件
+            startGameButton.addEventListener('click', startGame);
+
+            // 顯示開始消息
+            showMessage('歡迎來到無邊界貪食蛇遊戲!<br>準備好挑戰了嗎?');
+
+            fetchLeaderboard(); // 載入時顯示排行榜
+        };
+        
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight * 0.8;
+            gameWidth = canvas.width;
+            gameHeight = canvas.height;
+            
+            if (gameRunning) {
+                render();
+            }
+        }
+        
+        function startGame() {
+            messageElement.style.display = 'none';
+            gameRunning = true;
+            score = 0;
+            health = 3;
+            level = 1;
+            killCount = 0;
+            foodEaten = 0;
+            goldenFoodEaten = 0;
+            powerUpsCollected = 0;
+            gameSpeed = INITIAL_SPEED;
+            
+            updateUI();
+            
+            // 初始化蛇
+            const centerX = Math.floor((gameWidth / 2) / GRID_SIZE);
+            const centerY = Math.floor((gameHeight / 2) / GRID_SIZE);
+            
+            playerSnake = createSnake(centerX, centerY, '#4CAF50', true);
+            
+            // 創建 AI 控制的蛇
+            aiSnakes = [];
+            for (let i = 0; i < AI_SNAKES_COUNT; i++) {
+                const x = Math.floor(Math.random() * (gameWidth / GRID_SIZE));
+                const y = Math.floor(Math.random() * (gameHeight / GRID_SIZE));
+                
+                // 隨機顏色但不要太暗
+                const r = Math.floor(Math.random() * 200) + 55;
+                const g = Math.floor(Math.random() * 200) + 55;
+                const b = Math.floor(Math.random() * 200) + 55;
+                const color = `rgb(${r}, ${g}, ${b})`;
+                
+                aiSnakes.push(createSnake(x, y, color, false));
+            }
+            
+            // 初始化食物
+            foods = [];
+            spawnInitialFood(15);
+            
+            // 初始化強化道具
+            powerUps = [];
+            spawnPowerUp();
+            
+            // 初始化障礙物
+            obstacles = [];
+            
+            // 設定第一個目標
+            setRandomObjective();
+            
+            // 開始遊戲循環
+            lastUpdateTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function createSnake(x, y, color, isPlayer) {
+            const snake = {
+                body: [],
+                color: color,
+                direction: { x: 1, y: 0 },
+                nextDirection: { x: 1, y: 0 },
+                speed: isPlayer ? 1 : Math.random() * 0.5 + 0.5, // AI 蛇的速度稍微隨機一些
+                isPlayer: isPlayer,
+                aiMoveCounter: 0,
+                aiMoveChange: Math.floor(Math.random() * 10) + 15, // AI 蛇改變方向的頻率
+                aiTarget: null
+            };
+            
+            // 創建蛇的身體
+            for (let i = 0; i < (isPlayer ? INITIAL_SNAKE_LENGTH : Math.floor(Math.random() * 8) + 3); i++) {
+                snake.body.push({ x: x - i, y: y });
+            }
+            
+            return snake;
+        }
+        
+        function spawnInitialFood(count) {
+            for (let i = 0; i < count; i++) {
+                spawnFood();
+            }
+        }
+        
+        function spawnFood() {
+            // 隨機位置，考慮相對於視口的位置
+            const viewportLeft = Math.floor(cameraOffset.x / GRID_SIZE);
+            const viewportTop = Math.floor(cameraOffset.y / GRID_SIZE);
+            const viewportWidth = Math.ceil(gameWidth / GRID_SIZE);
+            const viewportHeight = Math.ceil(gameHeight / GRID_SIZE);
+            
+            const x = Math.floor(Math.random() * (viewportWidth * 3)) - viewportWidth + viewportLeft;
+            const y = Math.floor(Math.random() * (viewportHeight * 3)) - viewportHeight + viewportTop;
+            
+            // 隨機選擇食物類型
+            const rand = Math.random();
+            let foodType = 'normal';
+            let cumProb = 0;
+            
+            for (const [type, info] of Object.entries(FOOD_TYPES)) {
+                cumProb += info.probability;
+                if (rand < cumProb) {
+                    foodType = type;
+                    break;
+                }
+            }
+            
+            foods.push({
+                x: x,
+                y: y,
+                type: foodType,
+                color: FOOD_TYPES[foodType].color,
+                value: FOOD_TYPES[foodType].value,
+                pulsePhase: Math.random() * Math.PI * 2
+            });
+        }
+        
+        function spawnPowerUp() {
+            // 道具較少，只在視口范圍內生成
+            const viewportLeft = Math.floor(cameraOffset.x / GRID_SIZE);
+            const viewportTop = Math.floor(cameraOffset.y / GRID_SIZE);
+            const viewportWidth = Math.ceil(gameWidth / GRID_SIZE);
+            const viewportHeight = Math.ceil(gameHeight / GRID_SIZE);
+            
+            const x = Math.floor(Math.random() * viewportWidth) + viewportLeft;
+            const y = Math.floor(Math.random() * viewportHeight) + viewportTop;
+            
+            // 隨機選擇道具類型
+            const powerUpTypes = Object.keys(POWER_UPS);
+            const type = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+            
+            powerUps.push({
+                x: x,
+                y: y,
+                type: type,
+                color: POWER_UPS[type].color,
+                pulsePhase: Math.random() * Math.PI * 2
+            });
+        }
+        
+        function spawnObstacle() {
+            if (level < 2) return; // 第二關才開始出現障礙物
+            
+            const viewportLeft = Math.floor(cameraOffset.x / GRID_SIZE);
+            const viewportTop = Math.floor(cameraOffset.y / GRID_SIZE);
+            const viewportWidth = Math.ceil(gameWidth / GRID_SIZE);
+            const viewportHeight = Math.ceil(gameHeight / GRID_SIZE);
+            
+            const x = Math.floor(Math.random() * (viewportWidth * 2)) - viewportWidth/2 + viewportLeft;
+            const y = Math.floor(Math.random() * (viewportHeight * 2)) - viewportHeight/2 + viewportTop;
+            
+            // 隨機選擇障礙物類型
+            const rand = Math.random();
+            let obstacleType = 'bomb';
+            let cumProb = 0;
+            
+            for (const [type, info] of Object.entries(OBSTACLES)) {
+                cumProb += info.probability;
+                if (rand < cumProb) {
+                    obstacleType = type;
+                    break;
+                }
+            }
+            
+            obstacles.push({
+                x: x,
+                y: y,
+                type: obstacleType,
+                color: OBSTACLES[obstacleType].color,
+                damage: OBSTACLES[obstacleType].damage,
+                pulsePhase: Math.random() * Math.PI * 2
+            });
+        }
+        
+        function setRandomObjective() {
+            const objectiveType = OBJECTIVES[Math.floor(Math.random() * OBJECTIVES.length)];
+            const paramIndex = Math.min(level - 1, objectiveType.params.length - 1);
+            const target = objectiveType.params[paramIndex];
+            
+            currentObjective = {
+                type: objectiveType.type,
+                description: objectiveType.description.replace('{0}', target),
+                target: target
+            };
+            
+            objectiveProgress = 0;
+            objectiveTarget = target;
+            updateObjectiveUI();
+        }
+        
+        function updateObjectiveUI() {
+            objectiveDescriptionElement.textContent = `任務: ${currentObjective.description}`;
+            objectiveProgressElement.textContent = `${objectiveProgress}/${objectiveTarget}`;
+        }
+        
+        function gameLoop(timestamp) {
+            if (!gameRunning) return;
+            
+            const deltaTime = timestamp - lastUpdateTime;
+            
+            if (deltaTime >= gameSpeed) {
+                update();
+                render();
+                lastUpdateTime = timestamp;
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        function update() {
+            // 更新相機位置跟隨玩家的蛇頭
+            const head = playerSnake.body[0];
+            const targetX = head.x * GRID_SIZE - gameWidth / 2;
+            const targetY = head.y * GRID_SIZE - gameHeight / 2;
+            
+            cameraOffset.x += (targetX - cameraOffset.x) * 0.1;
+            cameraOffset.y += (targetY - cameraOffset.y) * 0.1;
+            
+            // 更新玩家蛇的方向
+            playerSnake.direction = playerSnake.nextDirection;
+            
+            // 移動玩家的蛇
+            moveSnake(playerSnake);
+            
+            // 檢查玩家是否吃到食物
+            checkFoodCollision(playerSnake);
+            
+            // 檢查玩家是否獲得強化道具
+            checkPowerUpCollision(playerSnake);
+            
+            // 檢查玩家是否碰到障礙物
+            checkObstacleCollision(playerSnake);
+            
+            // 更新強化道具狀態
+            updatePowerUps();
+            
+            // 移動 AI 控制的蛇
+            for (let i = 0; i < aiSnakes.length; i++) {
+                if (!aiSnakes[i]) continue;
+                
+                updateAIDirection(aiSnakes[i], i);
+                moveSnake(aiSnakes[i]);
+                checkFoodCollision(aiSnakes[i]);
+                
+                // 檢查 AI 蛇與玩家蛇的碰撞
+                if (checkSnakeCollision(playerSnake, aiSnakes[i])) {
+                    // 如果玩家比 AI 蛇長，玩家吃掉 AI 蛇
+                    if (playerSnake.body.length > aiSnakes[i].body.length || activePowerUps.ghost) {
+                        score += Math.floor(aiSnakes[i].body.length / 2);
+                        killCount++;
+                        createSnakeDeathEffect(aiSnakes[i]);
+                        
+                        // 在同一位置重生一條新的 AI 蛇
+                        const x = Math.floor(Math.random() * (gameWidth / GRID_SIZE));
+                        const y = Math.floor(Math.random() * (gameHeight / GRID_SIZE));
+                        
+                        const r = Math.floor(Math.random() * 200) + 55;
+                        const g = Math.floor(Math.random() * 200) + 55;
+                        const b = Math.floor(Math.random() * 200) + 55;
+                        const color = `rgb(${r}, ${g}, ${b})`;
+                        
+                        aiSnakes[i] = createSnake(x, y, color, false);
+                        
+                        // 檢查目標完成情況
+                        if (currentObjective.type === 'ai') {
+                            objectiveProgress++;
+                            updateObjectiveUI();
+                            checkObjectiveCompletion();
+                        }
+                    } 
+                    // 如果 AI 蛇比玩家長，玩家受傷
+                    else if (!activePowerUps.shield) {
+                        health--;
+                        updateUI();
+                        
+                        if (health <= 0) {
+                            gameOver('你被其他蛇吃掉了！');
+                            return;
+                        } else {
+                            // 顯示受傷效果
+                            createDamageEffect();
+                        }
+                    }
+                }
+            }
+            
+            // 檢查玩家蛇與自身的碰撞
+            if (checkSelfCollision(playerSnake) && !activePowerUps.shield && !activePowerUps.ghost) {
+                health--;
+                updateUI();
+                
+                if (health <= 0) {
+                    gameOver('你撞到了自己！');
+                    return;
+                } else {
+                    // 顯示受傷效果
+                    createDamageEffect();
+                    
+                    // 移除蛇的一部分尾巴
+                    const removeCount = Math.floor(playerSnake.body.length * 0.3);
+                    if (playerSnake.body.length > INITIAL_SNAKE_LENGTH + removeCount) {
+                        playerSnake.body.splice(playerSnake.body.length - removeCount, removeCount);
+                    }
+                }
+            }
+            
+            // 定期生成新的食物和強化道具
+            if (Math.random() < 0.05) {
+                spawnFood();
+            }
+            
+            if (Math.random() < 0.01) {
+                spawnPowerUp();
+            }
+            
+            // 根據等級定期生成障礙物
+            if (level >= 2 && Math.random() < 0.005 * level) {
+                spawnObstacle();
+            }
+            
+            // 清理視口外的對象（優化）
+            cleanupObjects();
+        }
+        
+        function moveSnake(snake) {
+            // 創建新的頭部
+            const head = { 
+                x: snake.body[0].x + snake.direction.x,
+                y: snake.body[0].y + snake.direction.y
+            };
+            
+            // 將新頭部添加到蛇身體的開頭
+            snake.body.unshift(head);
+            
+            // 移除尾部（除非蛇吃到了食物）
+            if (!snake.justAte) {
+                snake.body.pop();
+            } else {
+                snake.justAte = false;
+            }
+        }
+        
+        function updateAIDirection(snake, index) {
+            // AI 蛇的移動邏輯
+            snake.aiMoveCounter++;
+            
+            // 定期更新或選擇目標
+            if (snake.aiMoveCounter >= snake.aiMoveChange || !snake.aiTarget) {
+                snake.aiMoveCounter = 0;
+                snake.aiMoveChange = Math.floor(Math.random() * 10) + 15;
+                
+                // 選擇目標：食物、玩家或隨機方向
+                if (Math.random() < 0.7 && foods.length > 0) {
+                    // 找最近的食物
+                    let closestFood = null;
+                    let minDist = Number.MAX_VALUE;
+                    
+                    for (const food of foods) {
+                        const dx = food.x - snake.body[0].x;
+                        const dy = food.y - snake.body[0].y;
+                        const dist = dx * dx + dy * dy;
+                        
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closestFood = food;
+                        }
+                    }
+                    
+                    if (closestFood) {
+                        snake.aiTarget = { x: closestFood.x, y: closestFood.y, type: 'food' };
+                    }
+                } else if (Math.random() < 0.3) {
+                    // 目標是玩家
+                    const head = playerSnake.body[0];
+                    snake.aiTarget = { x: head.x, y: head.y, type: 'player' };
+                } else {
+                    // 隨機方向
+                    const randomDir = Math.floor(Math.random() * 4);
+                    const directions = [
+                        { x: 1, y: 0 },
+                        { x: 0, y: 1 },
+                        { x: -1, y: 0 },
+                        { x: 0, y: -1 }
+                    ];
+                    
+                    snake.direction = directions[randomDir];
+                    snake.aiTarget = null;
+                }
+            }
+            
+            // 朝著目標移動
+            if (snake.aiTarget) {
+                const head = snake.body[0];
+                const dx = snake.aiTarget.x - head.x;
+                const dy = snake.aiTarget.y - head.y;
+                
+                // 決定水平或垂直方向
+                if (Math.abs(dx) > Math.abs(dy)) {
+                    snake.direction = { x: dx > 0 ? 1 : -1, y: 0 };
+                } else {
+                    snake.direction = { x: 0, y: dy > 0 ? 1 : -1 };
+                }
+                
+                // 避免自身碰撞的簡單邏輯
+                const nextHead = { 
+                    x: head.x + snake.direction.x,
+                    y: head.y + snake.direction.y
+                };
+                
+                let willCollide = false;
+                for (let i = 1; i < snake.body.length; i++) {
+                    if (snake.body[i].x === nextHead.x && snake.body[i].y === nextHead.y) {
+                        willCollide = true;
+                        break;
+                    }
+                }
+                
+                if (willCollide) {
+                    // 選擇不會導致碰撞的隨機方向
+                    const directions = [
+                        { x: 1, y: 0 },
+                        { x: 0, y: 1 },
+                        { x: -1, y: 0 },
+                        { x: 0, y: -1 }
+                    ];
+                    
+                    // 過濾掉當前方向和反方向
+                    const validDirections = directions.filter(dir => 
+                        !(dir.x === snake.direction.x && dir.y === snake.direction.y) && 
+                        !(dir.x === -snake.direction.x && dir.y === -snake.direction.y)
+                    );
+                    
+                    if (validDirections.length > 0) {
+                        snake.direction = validDirections[Math.floor(Math.random() * validDirections.length)];
+                    }
+                }
+                
+                // 如果我們到達目標，清除它
+                if (head.x === snake.aiTarget.x && head.y === snake.aiTarget.y) {
+                    snake.aiTarget = null;
+                }
+            }
+        }
+        
+        function checkFoodCollision(snake) {
+            const head = snake.body[0];
+            
+            for (let i = 0; i < foods.length; i++) {
+                const food = foods[i];
+                
+                if (head.x === food.x && head.y === food.y) {
+                    // 蛇吃到食物
+                    snake.justAte = true;
+                    
+                    // 玩家特定邏輯
+                    if (snake.isPlayer) {
+                        score += food.value;
+                        foodEaten++;
+                        
+                        if (food.type === 'golden') {
+                            goldenFoodEaten++;
+                        }
+                        
+                        // 檢查目標進度
+                        if (currentObjective.type === 'score') {
+                            objectiveProgress = score;
+                        } else if (currentObjective.type === 'food') {
+                            objectiveProgress = foodEaten;
+                        } else if (currentObjective.type === 'golden') {
+                            objectiveProgress = goldenFoodEaten;
+                        } else if (currentObjective.type === 'length') {
+                            objectiveProgress = playerSnake.body.length;
+                        }
+                        
+                        updateObjectiveUI();
+                        checkObjectiveCompletion();
+                        updateUI();
+                    }
+                    
+                    // 移除吃掉的食物
+                    foods.splice(i, 1);
+                    
+                    // 生成新的食物
+                    spawnFood();
+                    break;
+                }
+            }
+        }
+        
+        function checkPowerUpCollision(snake) {
+            if (!snake.isPlayer) return;
+            
+            const head = snake.body[0];
+            
+            for (let i = 0; i < powerUps.length; i++) {
+                const powerUp = powerUps[i];
+                
+                if (head.x === powerUp.x && head.y === powerUp.y) {
+                    // 獲得強化道具
+                    activePowerUps[powerUp.type] = {
+                        startTime: performance.now(),
+                        duration: POWER_UPS[powerUp.type].duration
+                    };
+                    
+                    // 顯示獲得道具的效果
+                    createPowerUpEffect(powerUp.type);
+                    
+                    // 更新 UI 顯示
+                    updatePowerUpUI();
+                    
+                    // 移除道具
+                    powerUps.splice(i, 1);
+                    
+                    // 記錄收集的道具數量
+                    powerUpsCollected++;
+                    
+                    // 檢查目標進度
+                    if (currentObjective.type === 'powerup') {
+                        objectiveProgress = powerUpsCollected;
+                        updateObjectiveUI();
+                        checkObjectiveCompletion();
+                    }
+                    
+                    // 生成新的道具
+                    setTimeout(spawnPowerUp, 10000);
+                    break;
+                }
+            }
+        }
+        
+        function checkObstacleCollision(snake) {
+            if (!snake.isPlayer) return;
+            
+            const head = snake.body[0];
+            
+            for (let i = 0; i < obstacles.length; i++) {
+                const obstacle = obstacles[i];
+                
+                if (head.x === obstacle.x && head.y === obstacle.y) {
+                    // 如果有護盾，則無敵
+                    if (activePowerUps.shield) {
+                        createPowerUpEffect('shield');
+                    } else {
+                        // 受到傷害
+                        health -= obstacle.damage;
+                        updateUI();
+                        
+                        // 顯示受傷效果
+                        createDamageEffect();
+                        
+                        if (health <= 0) {
+                            gameOver(`你被${obstacle.type === 'bomb' ? '炸彈' : '尖刺'}擊中！`);
+                            return;
+                        }
+                    }
+                    
+                    // 移除障礙物
+                    obstacles.splice(i, 1);
+                    break;
+                }
+            }
+        }
+        
+        function updatePowerUps() {
+            const currentTime = performance.now();
+            let changed = false;
+            
+            for (const [type, info] of Object.entries(activePowerUps)) {
+                if (currentTime - info.startTime >= info.duration) {
+                    delete activePowerUps[type];
+                    changed = true;
+                }
+            }
+            
+            if (changed) {
+                updatePowerUpUI();
+            }
+        }
+        
+        function updatePowerUpUI() {
+            // 清空當前顯示
+            powerUpsDisplay.innerHTML = '';
+            
+            // 顯示活躍的強化道具
+            for (const [type, info] of Object.entries(activePowerUps)) {
+                const timeLeft = Math.ceil((info.duration - (performance.now() - info.startTime)) / 1000);
+                
+                const powerUpDiv = document.createElement('div');
+                powerUpDiv.style.display = 'flex';
+                powerUpDiv.style.alignItems = 'center';
+                powerUpDiv.style.marginRight = '10px';
+                
+                const icon = document.createElement('div');
+                icon.className = 'power-up-icon';
+                icon.style.backgroundColor = POWER_UPS[type].color;
+                
+                const text = document.createElement('span');
+                text.textContent = `${POWER_UPS[type].description.split(' - ')[0]} (${timeLeft}秒)`;
+                text.style.marginLeft = '5px';
+                
+                powerUpDiv.appendChild(icon);
+                powerUpDiv.appendChild(text);
+                powerUpsDisplay.appendChild(powerUpDiv);
+            }
+        }
+        
+        function checkObjectiveCompletion() {
+            if (objectiveProgress >= objectiveTarget) {
+                // 目標完成，進入下一關
+                level++;
+                levelElement.textContent = level;
+                
+                // 獎勵：增加蛇的長度
+                for (let i = 0; i < 3; i++) {
+                    const tail = playerSnake.body[playerSnake.body.length - 1];
+                    playerSnake.body.push({ x: tail.x, y: tail.y });
+                }
+                
+                // 顯示過關消息
+                showLevelUpMessage();
+                
+                // 設置新目標
+                setRandomObjective();
+                
+                // 增加難度
+                gameSpeed = Math.max(50, INITIAL_SPEED - (level - 1) * 10);
+                
+                // 每升一級添加一條 AI 蛇
+                if (level % 2 === 0 && level <= 8) {
+                    const x = Math.floor(Math.random() * (gameWidth / GRID_SIZE));
+                    const y = Math.floor(Math.random() * (gameHeight / GRID_SIZE));
+                    
+                    const r = Math.floor(Math.random() * 200) + 55;
+                    const g = Math.floor(Math.random() * 200) + 55;
+                    const b = Math.floor(Math.random() * 200) + 55;
+                    const color = `rgb(${r}, ${g}, ${b})`;
+                    
+                    aiSnakes.push(createSnake(x, y, color, false));
+                }
+            }
+        }
+        
+        function checkSelfCollision(snake) {
+            const head = snake.body[0];
+            
+            // 檢查頭部是否與身體其餘部分重疊
+            for (let i = 1; i < snake.body.length; i++) {
+                if (head.x === snake.body[i].x && head.y === snake.body[i].y) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        
+        function checkSnakeCollision(snake1, snake2) {
+            const head1 = snake1.body[0];
+            
+            // 檢查蛇1的頭是否碰到蛇2的任何部分
+            for (let i = 0; i < snake2.body.length; i++) {
+                if (head1.x === snake2.body[i].x && head1.y === snake2.body[i].y) {
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        
+        function cleanupObjects() {
+            // 獲取視口的範圍（格子單位）
+            const viewportLeft = Math.floor(cameraOffset.x / GRID_SIZE) - 10;
+            const viewportTop = Math.floor(cameraOffset.y / GRID_SIZE) - 10;
+            const viewportRight = viewportLeft + Math.ceil(gameWidth / GRID_SIZE) + 20;
+            const viewportBottom = viewportTop + Math.ceil(gameHeight / GRID_SIZE) + 20;
+            
+            // 清理視口外的食物
+            foods = foods.filter(food => 
+                food.x >= viewportLeft && food.x <= viewportRight &&
+                food.y >= viewportTop && food.y <= viewportBottom
+            );
+            
+            // 清理視口外的障礙物
+            obstacles = obstacles.filter(obstacle => 
+                obstacle.x >= viewportLeft && obstacle.x <= viewportRight &&
+                obstacle.y >= viewportTop && obstacle.y <= viewportBottom
+            );
+            
+            // 確保視口內有足夠的食物
+            const foodInView = foods.filter(food => 
+                food.x >= viewportLeft && food.x <= viewportRight &&
+                food.y >= viewportTop && food.y <= viewportBottom
+            );
+            
+            if (foodInView.length < 5) {
+                for (let i = 0; i < 5 - foodInView.length; i++) {
+                    spawnFood();
+                }
+            }
+        }
+        
+        function createDamageEffect() {
+            const gameContainer = document.getElementById('game-container');
+            gameContainer.style.animation = 'none';
+            
+            // 觸發瀏覽器重繪
+            void gameContainer.offsetWidth;
+            
+            // 添加紅色閃爍效果
+            gameContainer.style.animation = 'damage-flash 0.5s';
+            
+            // 定義動畫
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes damage-flash {
+                    0% { background-color: rgba(255, 0, 0, 0); }
+                    50% { background-color: rgba(255, 0, 0, 0.3); }
+                    100% { background-color: rgba(255, 0, 0, 0); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        function createPowerUpEffect(type) {
+            const gameContainer = document.getElementById('game-container');
+            gameContainer.style.animation = 'none';
+            
+            // 觸發瀏覽器重繪
+            void gameContainer.offsetWidth;
+            
+            // 根據道具類型添加不同顏色的閃爍效果
+            const color = POWER_UPS[type].color;
+            gameContainer.style.animation = `powerup-flash-${type} 0.5s`;
+            
+            // 定義動畫
+            const style = document.createElement('style');
+            style.textContent = `
+                @keyframes powerup-flash-${type} {
+                    0% { background-color: rgba(${hexToRgb(color)}, 0); }
+                    50% { background-color: rgba(${hexToRgb(color)}, 0.3); }
+                    100% { background-color: rgba(${hexToRgb(color)}, 0); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        function hexToRgb(hex) {
+            // 移除#前綴如果存在
+            hex = hex.replace(/^#/, '');
+            
+            // 解析RGB值
+            const bigint = parseInt(hex, 16);
+            const r = (bigint >> 16) & 255;
+            const g = (bigint >> 8) & 255;
+            const b = bigint & 255;
+            
+            return `${r}, ${g}, ${b}`;
+        }
+        
+        function createSnakeDeathEffect(snake) {
+            // 在蛇的每個部分創建爆炸效果
+            for (const part of snake.body) {
+                const particlesCount = 5;
+                
+                for (let i = 0; i < particlesCount; i++) {
+                    const particle = document.createElement('div');
+                    particle.className = 'snake-particle';
+                    particle.style.position = 'absolute';
+                    particle.style.width = '5px';
+                    particle.style.height = '5px';
+                    particle.style.borderRadius = '50%';
+                    particle.style.backgroundColor = snake.color;
+                    
+                    const x = (part.x * GRID_SIZE) - cameraOffset.x;
+                    const y = (part.y * GRID_SIZE) - cameraOffset.y;
+                    
+                    particle.style.left = `${x + Math.random() * GRID_SIZE}px`;
+                    particle.style.top = `${y + Math.random() * GRID_SIZE}px`;
+                    
+                    // 隨機動畫
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = Math.random() * 50 + 20;
+                    const duration = Math.random() * 1 + 0.5;
+                    
+                    particle.style.animation = `particle-animation ${duration}s forwards`;
+                    
+                    // 定義粒子動畫
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        @keyframes particle-animation {
+                            0% {
+                                transform: translate(0, 0) scale(1);
+                                opacity: 1;
+                            }
+                            100% {
+                                transform: translate(${Math.cos(angle) * distance}px, ${Math.sin(angle) * distance}px) scale(0);
+                                opacity: 0;
+                            }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                    
+                    // 添加到遊戲容器
+                    document.getElementById('game-container').appendChild(particle);
+                    
+                    // 動畫結束後移除粒子
+                    setTimeout(() => {
+                        if (particle.parentNode) {
+                            particle.parentNode.removeChild(particle);
+                        }
+                    }, duration * 1000);
+                }
+            }
+        }
+        
+        function showLevelUpMessage() {
+            const levelUpDiv = document.createElement('div');
+            levelUpDiv.style.position = 'absolute';
+            levelUpDiv.style.top = '50%';
+            levelUpDiv.style.left = '50%';
+            levelUpDiv.style.transform = 'translate(-50%, -50%)';
+            levelUpDiv.style.background = 'rgba(0, 128, 0, 0.8)';
+            levelUpDiv.style.color = 'white';
+            levelUpDiv.style.padding = '20px';
+            levelUpDiv.style.borderRadius = '10px';
+            levelUpDiv.style.fontSize = '24px';
+            levelUpDiv.style.zIndex = '100';
+            levelUpDiv.textContent = `恭喜！你已升到第 ${level} 級！`;
+            
+            document.getElementById('game-container').appendChild(levelUpDiv);
+            
+            // 3秒後移除消息
+            setTimeout(() => {
+                document.getElementById('game-container').removeChild(levelUpDiv);
+            }, 3000);
+        }
+        
+        function updateUI() {
+            scoreElement.textContent = score;
+            healthElement.textContent = health;
+            levelElement.textContent = level;
+        }
+        
+        function showMessage(text) {
+            messageElement.style.display = 'block';
+            messageTextElement.innerHTML = text;
+        }
+        
+        function gameOver(reason) {
+            gameRunning = false;
+            const finalScore = score;
+            showMessage(`遊戲結束！${reason}<br><br>你的最終分數是：${finalScore}<br>你達到的等級是：${level}<br><br>請輸入你的名字以加入排行榜：<input type="text" id="playerNameInput"><button id="saveScoreButton">儲存分數</button>`);
+
+            document.getElementById('saveScoreButton').addEventListener('click', () => {
+                const playerName = document.getElementById('playerNameInput').value || '匿名玩家'; // 取得玩家名稱，如果沒有輸入則使用 "匿名玩家"
+                saveScore(playerName, finalScore);
+            });
+        }
+
+        async function saveScore(playerName, finalScore) {
+            try {
+                await db.collection('leaderboard').add({
+                    name: playerName,
+                    score: finalScore,
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp() // 記錄儲存時間
+                });
+                showMessage('分數已儲存！');
+                fetchLeaderboard(); // 儲存後更新排行榜
+            } catch (error) {
+                console.error('儲存分數失敗:', error);
+                showMessage('儲存分數失敗！請稍後再試。');
+            }
+        }
+        
+        function render() {
+            // 清除畫布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 繪製背景網格
+            drawGrid();
+            
+            // 繪製食物
+            drawFood();
+            
+            // 繪製強化道具
+            drawPowerUps();
+            
+            // 繪製障礙物
+            drawObstacles();
+            
+            // 繪製 AI 控制的蛇
+            for (const snake of aiSnakes) {
+                drawSnake(snake);
+            }
+            
+            // 繪製玩家的蛇
+            drawSnake(playerSnake);
+            
+            // 繪製 AI 蛇的信息
+            drawSnakeInfo();
+        }
+        
+        function drawGrid() {
+            // 獲取視口的範圍（像素單位）
+            const viewportLeft = cameraOffset.x;
+            const viewportTop = cameraOffset.y;
+            
+            // 計算格子的起始位置
+            const startX = Math.floor(viewportLeft / GRID_SIZE) * GRID_SIZE - viewportLeft;
+            const startY = Math.floor(viewportTop / GRID_SIZE) * GRID_SIZE - viewportTop;
+            
+            // 網格線間距
+            const gridSpacing = GRID_SIZE * 5;
+            
+            // 設置網格線樣式
+            ctx.strokeStyle = 'rgba(50, 50, 50, 0.3)';
+            ctx.lineWidth = 1;
+            
+            // 繪製垂直線
+            for (let x = startX; x <= canvas.width; x += gridSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            
+            // 繪製水平線
+            for (let y = startY; y <= canvas.height; y += gridSpacing) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+        
+        function drawSnake(snake) {
+            // 繪製蛇的身體
+            for (let i = 0; i < snake.body.length; i++) {
+                const part = snake.body[i];
+                const screenX = part.x * GRID_SIZE - cameraOffset.x;
+                const screenY = part.y * GRID_SIZE - cameraOffset.y;
+                
+                // 檢查是否在視口內
+                if (screenX >= -GRID_SIZE && screenX <= canvas.width &&
+                    screenY >= -GRID_SIZE && screenY <= canvas.height) {
+                    
+                    // 為頭部添加特殊顏色
+                    if (i === 0) {
+                        ctx.fillStyle = snake.isPlayer ? 
+                            (activePowerUps.ghost ? 'rgba(135, 206, 235, 0.7)' : // 幽靈模式
+                            (activePowerUps.shield ? '#4169E1' : // 護盾模式
+                            (activePowerUps.speedBoost ? '#32CD32' : // 加速模式
+                            (activePowerUps.magnet ? '#DAA520' : '#FF6347')))) : // 磁鐵模式或普通
+                            '#FF6347'; // AI 蛇頭都是紅色
+                    } else {
+                        // 身體部分
+                        const alpha = snake.isPlayer && activePowerUps.ghost ? 0.7 : 1;
+                        ctx.fillStyle = snake.isPlayer ? 
+                            `rgba(${hexToRgb(snake.color)}, ${alpha})` :
+                            snake.color;
+                    }
+                    
+                    // 繪製略小於網格的方塊，以便在網格之間留有小間隙
+                    const margin = 1;
+                    ctx.fillRect(
+                        screenX + margin,
+                        screenY + margin,
+                        GRID_SIZE - margin * 2,
+                        GRID_SIZE - margin * 2
+                    );
+                    
+                    // 為蛇頭添加眼睛
+                    if (i === 0) {
+                        ctx.fillStyle = 'white';
+                        
+                        // 根據方向定位眼睛
+                        const eyeSize = GRID_SIZE / 5;
+                        const eyeOffset = GRID_SIZE / 3;
+                        
+                        // 左眼
+                        let leftEyeX, leftEyeY, rightEyeX, rightEyeY;
+                        
+                        if (snake.direction.x === 1) { // 向右
+                            leftEyeX = screenX + GRID_SIZE - eyeOffset;
+                            leftEyeY = screenY + eyeOffset;
+                            rightEyeX = screenX + GRID_SIZE - eyeOffset;
+                            rightEyeY = screenY + GRID_SIZE - eyeOffset;
+                        } else if (snake.direction.x === -1) { // 向左
+                            leftEyeX = screenX + eyeOffset;
+                            leftEyeY = screenY + eyeOffset;
+                            rightEyeX = screenX + eyeOffset;
+                            rightEyeY = screenY + GRID_SIZE - eyeOffset;
+                        } else if (snake.direction.y === 1) { // 向下
+                            leftEyeX = screenX + eyeOffset;
+                            leftEyeY = screenY + GRID_SIZE - eyeOffset;
+                            rightEyeX = screenX + GRID_SIZE - eyeOffset;
+                            rightEyeY = screenY + GRID_SIZE - eyeOffset;
+                        } else { // 向上
+                            leftEyeX = screenX + eyeOffset;
+                            leftEyeY = screenY + eyeOffset;
+                            rightEyeX = screenX + GRID_SIZE - eyeOffset;
+                            rightEyeY = screenY + eyeOffset;
+                        }
+                        
+                        ctx.fillRect(leftEyeX, leftEyeY, eyeSize, eyeSize);
+                        ctx.fillRect(rightEyeX, rightEyeY, eyeSize, eyeSize);
+                    }
+                }
+            }
+        }
+        
+        function drawFood() {
+            for (const food of foods) {
+                const screenX = food.x * GRID_SIZE - cameraOffset.x;
+                const screenY = food.y * GRID_SIZE - cameraOffset.y;
+                
+                // 檢查是否在視口內
+                if (screenX >= -GRID_SIZE && screenX <= canvas.width &&
+                    screenY >= -GRID_SIZE && screenY <= canvas.height) {
+                    
+                    // 脈動效果
+                    const pulseFactor = 0.15 * Math.sin(food.pulsePhase) + 0.85;
+                    food.pulsePhase += 0.1;
+                    
+                    // 繪製食物
+                    ctx.fillStyle = food.color;
+                    
+                    const centerX = screenX + GRID_SIZE / 2;
+                    const centerY = screenY + GRID_SIZE / 2;
+                    const radius = (GRID_SIZE / 2 - 2) * pulseFactor;
+                    
+                    ctx.beginPath();
+                    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    
+                    // 為特殊食物添加發光效果
+                    if (food.type !== 'normal') {
+                        ctx.shadowBlur = 10;
+                        ctx.shadowColor = food.color;
+                        ctx.beginPath();
+                        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
+                    }
+                }
+            }
+        }
+        
+        function drawPowerUps() {
+            for (const powerUp of powerUps) {
+                const screenX = powerUp.x * GRID_SIZE - cameraOffset.x;
+                const screenY = powerUp.y * GRID_SIZE - cameraOffset.y;
+                
+                // 檢查是否在視口內
+                if (screenX >= -GRID_SIZE && screenX <= canvas.width &&
+                    screenY >= -GRID_SIZE && screenY <= canvas.height) {
+                    
+                    // 脈動效果，讓道具更顯眼
+                    const pulseFactor = 0.2 * Math.sin(powerUp.pulsePhase) + 0.8;
+                    powerUp.pulsePhase += 0.1;
+                    
+                    const centerX = screenX + GRID_SIZE / 2;
+                    const centerY = screenY + GRID_SIZE / 2;
+                    const size = GRID_SIZE * 0.8 * pulseFactor;
+                    
+                    // 繪製四角星圖案
+                    ctx.fillStyle = powerUp.color;
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 2;
+                    
+                    // 添加發光效果
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = powerUp.color;
+                    
+                    ctx.beginPath();
+                    for (let i = 0; i < 8; i++) {
+                        const radius = i % 2 === 0 ? size / 2 : size / 4;
+                        const angle = (Math.PI / 4) * i;
+                        const x = centerX + radius * Math.cos(angle);
+                        const y = centerY + radius * Math.sin(angle);
+                        
+                        if (i === 0) {
+                            ctx.moveTo(x, y);
+                        } else {
+                            ctx.lineTo(x, y);
+                        }
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // 重置陰影效果
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+        
+        function drawObstacles() {
+            for (const obstacle of obstacles) {
+                const screenX = obstacle.x * GRID_SIZE - cameraOffset.x;
+                const screenY = obstacle.y * GRID_SIZE - cameraOffset.y;
+                
+                // 檢查是否在視口內
+                if (screenX >= -GRID_SIZE && screenX <= canvas.width &&
+                    screenY >= -GRID_SIZE && screenY <= canvas.height) {
+                    
+                    // 脈動效果
+                    const pulseFactor = 0.1 * Math.sin(obstacle.pulsePhase) + 0.9;
+                    obstacle.pulsePhase += 0.1;
+                    
+                    const centerX = screenX + GRID_SIZE / 2;
+                    const centerY = screenY + GRID_SIZE / 2;
+                    
+                    // 根據類型繪製不同形狀的障礙物
+                    ctx.fillStyle = obstacle.color;
+                    
+                    if (obstacle.type === 'bomb') {
+                        // 繪製炸彈
+                        const radius = (GRID_SIZE / 2 - 2) * pulseFactor;
+                        
+                        // 炸彈主體
+                        ctx.beginPath();
+                        ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                        ctx.fill();
+                        
+                        // 炸彈引線
+                        ctx.strokeStyle = '#FFF';
+                        ctx.lineWidth = 2 * pulseFactor;
+                        ctx.beginPath();
+                        ctx.moveTo(centerX, centerY - radius);
+                        ctx.quadraticCurveTo(
+                            centerX + radius / 2, 
+                            centerY - radius * 1.5, 
+                            centerX + radius, 
+                            centerY - radius * 1.2
+                        );
+                        ctx.stroke();
+                        
+                        // 火花
+                        ctx.fillStyle = '#FFFF00';
+                        ctx.beginPath();
+                        ctx.arc(
+                            centerX + radius, 
+                            centerY - radius * 1.2, 
+                            3 * pulseFactor, 
+                            0, 
+                            Math.PI * 2
+                        );
+                        ctx.fill();
+                    } else if (obstacle.type === 'spike') {
+                        // 繪製尖刺
+                        ctx.beginPath();
+                        
+                        // 八個刺
+                        const outerRadius = GRID_SIZE / 2 * pulseFactor;
+                        const innerRadius = GRID_SIZE / 4 * pulseFactor;
+                        
+                        for (let i = 0; i < 8; i++) {
+                            const angle = (Math.PI / 4) * i;
+                            const outerX = centerX + outerRadius * Math.cos(angle);
+                            const outerY = centerY + outerRadius * Math.sin(angle);
+                            const innerAngle = angle + Math.PI / 8;
+                            const innerX = centerX + innerRadius * Math.cos(innerAngle);
+                            const innerY = centerY + innerRadius * Math.sin(innerAngle);
+                            
+                            if (i === 0) {
+                                ctx.moveTo(outerX, outerY);
+                            } else {
+                                ctx.lineTo(outerX, outerY);
+                            }
+                            
+                            ctx.lineTo(innerX, innerY);
+                        }
+                        
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+            }
+        }
+        
+        function drawSnakeInfo() {
+            for (const snake of aiSnakes) {
+                if (!snake) continue;
+                
+                const head = snake.body[0];
+                const screenX = head.x * GRID_SIZE - cameraOffset.x;
+                const screenY = head.y * GRID_SIZE - cameraOffset.y;
+                
+                // 檢查是否在視口內
+                if (screenX >= -GRID_SIZE && screenX <= canvas.width &&
+                    screenY >= -GRID_SIZE && screenY <= canvas.height) {
+                    
+                    // 移除現有信息元素
+                    const existingInfo = document.querySelectorAll('.snake-info');
+                    existingInfo.forEach(el => el.remove());
+                    
+                    // 創建或更新信息元素
+                    const infoElement = document.createElement('div');
+                    infoElement.className = 'snake-info';
+                    infoElement.textContent = `長度: ${snake.body.length}`;
+                    infoElement.style.left = `${screenX}px`;
+                    infoElement.style.top = `${screenY - 15}px`;
+                    
+                    document.getElementById('game-container').appendChild(infoElement);
+                }
+            }
+        }
+        
+        function handleKeyDown(e) {
+            // 僅在遊戲運行時處理按鍵
+            if (!gameRunning) return;
+            
+            // 根據按鍵設置蛇的下一個方向
+            // 避免180度轉彎（即不能直接掉頭）
+            switch (e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    if (playerSnake.direction.y !== 1) { // 不能向下時向上轉
+                        playerSnake.nextDirection = { x: 0, y: -1 };
+                    }
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    if (playerSnake.direction.y !== -1) { // 不能向上時向下轉
+                        playerSnake.nextDirection = { x: 0, y: 1 };
+                    }
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    if (playerSnake.direction.x !== 1) { // 不能向右時向左轉
+                        playerSnake.nextDirection = { x: -1, y: 0 };
+                    }
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    if (playerSnake.direction.x !== -1) { // 不能向左時向右轉
+                        playerSnake.nextDirection = { x: 1, y: 0 };
+                    }
+                    break;
+                case 'p':
+                case 'P':
+                    // 暫停遊戲
+                    gameRunning = !gameRunning;
+                    if (gameRunning) {
+                        requestAnimationFrame(gameLoop);
+                    } else {
+                        showMessage('遊戲暫停');
+                    }
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>
